@@ -1,15 +1,19 @@
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-import pandas as pd
-import datetime
 
 @st.cache_resource
 def get_gsheet():
-    credentials = Credentials.from_service_account_info(st.secrets["google"])
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", 
+              "https://www.googleapis.com/auth/drive"]
+
+    credentials = Credentials.from_service_account_info(
+        st.secrets["google"],
+        scopes=scopes
+    )
+
     client = gspread.authorize(credentials)
 
-    # USING KEY INSTEAD OF URL
     spreadsheet = client.open_by_key("1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs")
 
     assignments = spreadsheet.worksheet("assignments")
@@ -19,7 +23,6 @@ def get_gsheet():
 
     return spreadsheet, assignments, meta, log, staff_sheet
 
-spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet = get_gsheet()
 
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
