@@ -4,15 +4,13 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
 
-# --- Google Sheets Setup ---
 @st.cache_resource
 def get_gsheet():
     credentials = Credentials.from_service_account_info(st.secrets["google"])
     client = gspread.authorize(credentials)
 
-    spreadsheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs/edit?usp=sharing"
-    )
+    # USING KEY INSTEAD OF URL
+    spreadsheet = client.open_by_key("1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs")
 
     assignments = spreadsheet.worksheet("assignments")
     meta = spreadsheet.worksheet("meta")
@@ -70,7 +68,6 @@ staff = st.selectbox("Select Staff", STAFF)
 if staff:
     staff_data = data[data["staff"] == staff]
 
-    # --- Location Editor ---
     locations = staff_data["location"].unique()
     location = locations[0] if len(locations) > 0 else ""
     new_location = st.text_input("Location:", value=location)
