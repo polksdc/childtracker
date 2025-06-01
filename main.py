@@ -1,29 +1,28 @@
 import streamlit as st
 import gspread
+from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
-from google.oauth2.service_account import Credentials
-
 
 # --- Google Sheets Setup ---
 @st.cache_resource
 def get_gsheet():
-    # Load credentials directly from Streamlit secrets
     credentials = Credentials.from_service_account_info(st.secrets["google"])
     client = gspread.authorize(credentials)
 
-    # Open your spreadsheet by URL or by key (both work fine)
     spreadsheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs/edit#gid=0"
+        "https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit"
     )
 
-    # Open your 4 worksheets
     assignments = spreadsheet.worksheet("assignments")
     meta = spreadsheet.worksheet("meta")
     log = spreadsheet.worksheet("log")
     staff_sheet = spreadsheet.worksheet("staff")
 
     return spreadsheet, assignments, meta, log, staff_sheet
+
+spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet = get_gsheet()
+
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
 today = datetime.date.today().isoformat()
@@ -39,8 +38,8 @@ else:
 
 # --- Load Staff List Dynamically ---
 staff_rows = staff_sheet.get_all_values()
-STAFF = [row[0].strip() for row in staff_rows if row and row[0].strip()]  # Clean empty rows/spaces
-STAFF.insert(0, "")  # Blank option for top select
+STAFF = [row[0].strip() for row in staff_rows if row and row[0].strip()]
+STAFF.insert(0, "")
 
 # --- Allow Adding Staff ---
 st.sidebar.subheader("Manage Staff List")
@@ -83,7 +82,6 @@ if staff:
                 sheet.update_cell(idx, headers.index("location")+1, new_location)
         location = new_location
 
-    # --- Children List ---
     rows_with_index = [
         (idx, row) for idx, row in enumerate(rows[1:], start=2)
         if row[headers.index("staff")] == staff
@@ -99,7 +97,6 @@ if staff:
             st.write(f"Assigned to: {staff}")
             st.write(f"Location: {new_location}")
 
-            # Only offer valid staff (no blanks) for move options
             valid_staff = [s for s in STAFF if s]
             move_to = st.selectbox(
                 f"Move {child_name} to:",
@@ -116,7 +113,6 @@ if staff:
                     if st.button(f"Confirm move to {move_to}", key=f"confirm_button_{i}"):
                         st.session_state[confirm_key] = True
                 else:
-                    # Actually move after confirmation
                     sheet.delete_rows(sheet_row_num)
                     sheet.append_row([move_to, new_location, child_name])
                     log_sheet.append_row([
@@ -140,7 +136,6 @@ if staff:
                 ])
                 st.rerun()
 
-    # --- Add New Child ---
     st.subheader("Add Child")
     new_child = st.text_input("Child name", key="new_child")
     if st.button("Add Child"):
@@ -155,10 +150,8 @@ if staff:
             ])
             st.rerun()
 
-# --- Role Swap Logic ---
 st.header("Shift Change - Staff Swap")
 col1, col2 = st.columns(2)
-
 with col1:
     from_staff = st.selectbox("From Staff", [s for s in STAFF if s], key="from_swap")
 with col2:
