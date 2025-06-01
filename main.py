@@ -27,6 +27,7 @@ def get_gsheet():
 
     return spreadsheet, assignments, meta, log, staff_sheet
 
+spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet = get_gsheet()
 
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
