@@ -4,6 +4,14 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
 
+from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+
+creds = Credentials.from_service_account_file("path/to/your/google_key.json")
+creds.refresh(Request())
+print("Success — access token:", creds.token)
+
+
 # --- Google Sheets Setup ---
 @st.cache_resource
 def get_gsheet():
