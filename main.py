@@ -15,6 +15,10 @@ def get_gsheet():
     client = gspread.authorize(credentials)
 
     spreadsheet = client.open_by_key("1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs")
+    
+    # FULL VISIBILITY DEBUG
+    all_worksheets = spreadsheet.worksheets()
+    st.write("Service account sees these tabs:", [ws.title for ws in all_worksheets])
 
     assignments = spreadsheet.worksheet("assignments")
     meta = spreadsheet.worksheet("meta")
