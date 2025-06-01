@@ -11,7 +11,7 @@ def get_gsheet():
     client = gspread.authorize(credentials)
 
     spreadsheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit"
+        "https://docs.google.com/spreadsheets/d/1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs/edit?usp=sharing"
     )
 
     assignments = spreadsheet.worksheet("assignments")
