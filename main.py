@@ -32,6 +32,18 @@ def get_gsheet():
 # Load Sheets
 spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet, incident_sheet, memo_sheet = get_gsheet()
 
+
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"]  {
+        font-size: 18px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
 today = datetime.date.today().isoformat()
@@ -65,38 +77,43 @@ data = pd.DataFrame(rows[1:], columns=headers) if len(rows) > 1 else pd.DataFram
 data.columns = [col.lower() for col in data.columns]
 
 # --- Main UI ---
-st.title("Staff Assignment Manager")
+st.title("SDC Dashboard :sunglasses:")
 
-with st.sidebar:
-    staff = st.selectbox("Select Staff", STAFF)
-    if not staff:
-        st.stop()
-    
-    staff_data = data[data["staff"] == staff]
-    locations = staff_data["location"].unique()
-    location = locations[0] if len(locations) > 0 else ""
-    new_location = st.text_input("Location:", value=location)
-    
-    if location != new_location:
-        for idx, row in enumerate(rows[1:], start=2):
-            if row[headers.index("staff")] == staff:
-                sheet.update_cell(idx, headers.index("location")+1, new_location)
-                log_sheet.append_row([
-                    now_timestamp(),
-                    "Location Update",
-                    staff,
-                    row[headers.index("child")],
-                    f"Updated location to {new_location}"
-                ])
-        location = new_location
+staff = st.selectbox("Select Staff", STAFF)
+if not staff:
+    st.stop()
+
+staff_data = data[data["staff"] == staff]
+locations = staff_data["location"].unique()
+location = locations[0] if len(locations) > 0 else ""
+new_location = st.text_input("Location:", value=location)
+
+if location != new_location:
+    for idx, row in enumerate(rows[1:], start=2):
+        if row[headers.index("staff")] == staff:
+            sheet.update_cell(idx, headers.index("location")+1, new_location)
+            log_sheet.append_row([
+                now_timestamp(),
+                "Location Update",
+                staff,
+                row[headers.index("child")],
+                f"Updated location to {new_location}"
+            ])
+    location = new_location
 
 rows_with_index = [
     (idx, row) for idx, row in enumerate(rows[1:], start=2)
     if row[headers.index("staff")] == staff
 ]
+st.info(
+    f""" - 🧑‍🤝‍🧑 Count actual heads.
+- ☀️ Apply sunscreen for outside. EVERY TIME.
+- 💧 Hydrate groups between transitions and during headcount
+- ✅ Use Care Actions to log everything."""
+)
 
 # --- Whole Group Actions ---
-with st.expander("🛠️ Whole Group Actions"):
+with st.expander("🛠️ Whole Group Actions", expanded=True):
     st.subheader("Select Group Action")
 
     action_options = {
@@ -133,7 +150,6 @@ with st.expander("🛠️ Whole Group Actions"):
         st.rerun()
 
 # --- Per Child Actions ---
-st.divider()
 st.subheader("Children ", divider="gray")
 
 total_children = len(data)
@@ -146,7 +162,7 @@ st.write(f"🧑‍🏫 Under {staff}: **{staff_children}**")
 
 for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
     child_name = row_values[headers.index("child")]
-    with st.expander(f"{child_name}"):
+    with st.expander(f"**{child_name}**"):
         st.write(f"Assigned to: {staff}")
         st.write(f"Location: {new_location}")
 
@@ -206,7 +222,6 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
                     st.session_state[f"confirm_checkout_{i}"] = False
 
 # --- Add Child ---
-st.divider()
 
 st.subheader("Add Child")
 new_child = st.text_input("Child name", key="new_child_global")
@@ -260,7 +275,6 @@ with st.sidebar:
 
 # --- Full Child History ---
 st.divider()
-st.subheader("Child Full History", divider="gray")
 
 # Load incidents
 incident_rows = incident_sheet.get_all_values()
@@ -278,23 +292,41 @@ today_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
 children_in_logs_today = today_logs["child"].dropna().unique().tolist()
 children_in_incidents = incident_data["child"].dropna().unique().tolist()
 all_children = sorted(list(set(children_in_logs_today + children_in_incidents)))
+# --- Full Child History ---
 
-# Select child
-selected_child = st.selectbox("Select Child for History:", all_children)
+with st.expander("📋 Child Full History"):
 
-# Everything inside one collapsible
-with st.expander(f"📋 Full History for {selected_child}"):
+    # Load incidents
+    incident_rows = incident_sheet.get_all_values()
+    incident_data = pd.DataFrame(incident_rows[1:], columns=incident_rows[0]) if len(incident_rows) > 1 else pd.DataFrame(columns=["timestamp", "staff", "child", "incident"])
 
-    # Incidents first (all-time)
+    # Load logs
+    log_rows = log_sheet.get_all_values()
+    log_data = pd.DataFrame(log_rows[1:], columns=log_rows[0]) if len(log_rows) > 1 else pd.DataFrame(columns=["timestamp", "action", "staff", "child", "log_text"])
+
+    # Parse timestamps for logs
+    log_data["parsed_date"] = pd.to_datetime(log_data["timestamp"], format="%B %d, %Y %I:%M %p")
+    today_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
+
+    # Build child list from today's logs and all incidents
+    children_in_logs_today = today_logs["child"].dropna().unique().tolist()
+    children_in_incidents = incident_data["child"].dropna().unique().tolist()
+    all_children = sorted(list(set(children_in_logs_today + children_in_incidents)))
+
+    # Dropdown inside the expander
+    selected_child = st.selectbox("Select Child:", all_children)
+
+    st.markdown("---")
+
+    # First incidents (all-time)
     child_incidents = incident_data[incident_data["child"] == selected_child]
     if not child_incidents.empty:
-        st.subheader("Incidents")
         for _, row in child_incidents.iterrows():
             st.write(f"🟥 {row['timestamp']} — {row['staff']}: {row['incident']}")
     else:
         st.write("✅ No incidents logged.")
 
-    # Today's logs
+    # Then today's logs
     child_logs = today_logs[today_logs["child"] == selected_child]
     emoji_map = {
         "Ate": "🍽️", "Hydration": "💧", "Sunscreen": "☀️", "Accurate Headcount": "👥",
@@ -304,7 +336,6 @@ with st.expander(f"📋 Full History for {selected_child}"):
     }
 
     if not child_logs.empty:
-        st.subheader("Activity Log (Today)")
         for _, row in child_logs.iterrows():
             emoji = emoji_map.get(row['action'], "📝")
             st.write(f"{row['timestamp']} — {emoji} {row['action']} — {row['staff']}: {row['log_text']}")
