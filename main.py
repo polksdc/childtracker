@@ -3,24 +3,28 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import datetime
+from google.oauth2.service_account import Credentials
+
 
 # --- Google Sheets Setup ---
 @st.cache_resource
 def get_gsheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("google_key.json", scope)
-    client = gspread.authorize(creds)
+    # Load credentials directly from Streamlit secrets
+    credentials = Credentials.from_service_account_info(st.secrets["google"])
+    client = gspread.authorize(credentials)
+
+    # Open your spreadsheet by URL or by key (both work fine)
     spreadsheet = client.open_by_url(
         "https://docs.google.com/spreadsheets/d/1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs/edit#gid=0"
     )
+
+    # Open your 4 worksheets
     assignments = spreadsheet.worksheet("assignments")
     meta = spreadsheet.worksheet("meta")
     log = spreadsheet.worksheet("log")
     staff_sheet = spreadsheet.worksheet("staff")
+
     return spreadsheet, assignments, meta, log, staff_sheet
-
-spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet = get_gsheet()
-
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
 today = datetime.date.today().isoformat()
