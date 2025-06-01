@@ -47,7 +47,7 @@ st.markdown(
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
 today = datetime.date.today().isoformat()
-st.write(f"Today's date: {today}")
+# st.write(f"Today's date: {today}")
 
 if last_reset_cell != today:
     st.warning("New day detected! Resetting assignment sheet...")
@@ -62,13 +62,7 @@ staff_rows = staff_sheet.get_all_values()
 STAFF = [row[0].strip() for row in staff_rows if row and row[0].strip()]
 STAFF.insert(0, "")
 
-# --- Allow Adding Staff ---
-st.sidebar.subheader("Manage Staff List")
-new_staff = st.sidebar.text_input("Add new staff member:")
-if st.sidebar.button("Add Staff"):
-    if new_staff.strip() and new_staff.strip() not in STAFF:
-        staff_sheet.append_row([new_staff.strip()])
-        st.rerun()
+
 
 # --- Load Assignments ---
 rows = sheet.get_all_values()
@@ -106,15 +100,17 @@ rows_with_index = [
     if row[headers.index("staff")] == staff
 ]
 st.info(
-    f""" - 🧑‍🤝‍🧑 Count actual heads.
-- ☀️ Apply sunscreen for outside. EVERY TIME.
-- 💧 Hydrate groups between transitions and during headcount
-- ✅ Use Care Actions to log everything."""
+    f""" 
+- **KEEP LOCATION UPDATED 🎯**
+    - 🧑‍🤝‍🧑 Count actual heads. 
+    - ☀️ Apply sunscreen for outside. EVERY TIME.
+    - 💧 Hydrate groups between transitions and during headcount
+    - ✅ Use Care Actions to log everything. 
+        - Announce logs and changes on walkie."""
 )
 
 # --- Whole Group Actions ---
 with st.expander("🛠️ Whole Group Actions", expanded=True):
-    st.subheader("Select Group Action")
 
     action_options = {
         "Care Actions": {
@@ -257,9 +253,8 @@ with st.expander("🔄 Shift Change - Bulk Move Children"):
 
 # --- Sidebar: Daily Staff Memo ---
 with st.sidebar:
-    st.markdown("---")  # clean divider
 
-    st.header("📋 Staff Memo")
+    st.header("📋 Staff Memos:")
 
     memo_rows = memo_sheet.get_all_values()
     memo_headers = memo_rows[0]
@@ -272,7 +267,7 @@ with st.sidebar:
             st.markdown(row["memo"])
     else:
         st.write("✅ No memo assigned for today.")
-
+    st.divider()
 # --- Full Child History ---
 st.divider()
 
@@ -341,3 +336,10 @@ with st.expander("📋 Child Full History"):
             st.write(f"{row['timestamp']} — {emoji} {row['action']} — {row['staff']}: {row['log_text']}")
     else:
         st.write("✅ No activity logs found for today.")
+# --- Allow Adding Staff ---
+st.sidebar.subheader("Manage Staff List")
+new_staff = st.sidebar.text_input("Add new staff member:")
+if st.sidebar.button("Add Staff"):
+    if new_staff.strip() and new_staff.strip() not in STAFF:
+        staff_sheet.append_row([new_staff.strip()])
+        st.rerun()
