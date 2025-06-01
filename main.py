@@ -25,11 +25,12 @@ def get_gsheet():
     log = spreadsheet.worksheet("log")
     staff_sheet = spreadsheet.worksheet("staff")
     incidents = spreadsheet.worksheet("incidents")
+    memos = spreadsheet.worksheet("memos")
 
-    return spreadsheet, assignments, meta, log, staff_sheet, incidents
+    return spreadsheet, assignments, meta, log, staff_sheet, incidents, memos
 
-# --- Load Sheets ---
-spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet, incident_sheet = get_gsheet()
+# Load Sheets
+spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet, incident_sheet, memo_sheet = get_gsheet()
 
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
@@ -66,54 +67,83 @@ data.columns = [col.lower() for col in data.columns]
 # --- Main UI ---
 st.title("Staff Assignment Manager")
 
-staff = st.selectbox("Select Staff", STAFF)
-if not staff:
-    st.stop()
-
-staff_data = data[data["staff"] == staff]
-locations = staff_data["location"].unique()
-location = locations[0] if len(locations) > 0 else ""
-new_location = st.text_input("Location:", value=location)
-
-# Auto propagate location to children
-if location != new_location:
-    for idx, row in enumerate(rows[1:], start=2):
-        if row[headers.index("staff")] == staff:
-            sheet.update_cell(idx, headers.index("location")+1, new_location)
-            log_sheet.append_row([
-                now_timestamp(),
-                "Location Update",
-                staff,
-                row[headers.index("child")],
-                f"Updated location to {new_location}"
-            ])
-    location = new_location
+with st.sidebar:
+    staff = st.selectbox("Select Staff", STAFF)
+    if not staff:
+        st.stop()
+    
+    staff_data = data[data["staff"] == staff]
+    locations = staff_data["location"].unique()
+    location = locations[0] if len(locations) > 0 else ""
+    new_location = st.text_input("Location:", value=location)
+    
+    if location != new_location:
+        for idx, row in enumerate(rows[1:], start=2):
+            if row[headers.index("staff")] == staff:
+                sheet.update_cell(idx, headers.index("location")+1, new_location)
+                log_sheet.append_row([
+                    now_timestamp(),
+                    "Location Update",
+                    staff,
+                    row[headers.index("child")],
+                    f"Updated location to {new_location}"
+                ])
+        location = new_location
 
 rows_with_index = [
     (idx, row) for idx, row in enumerate(rows[1:], start=2)
     if row[headers.index("staff")] == staff
 ]
 
-# --- Group Care Actions ---
-st.subheader("Care Actions (Whole Group)")
-care_actions = {
-    "Ate": "Meal Confirmed",
-    "Hydration": "Hydration Confirmed",
-    "Sunscreen": "Sunscreen Applied",
-    "Accurate Headcount": "Headcount Confirmed"
-}
-selected_care_action = st.selectbox("Select Care Action", list(care_actions.keys()), key="care_action_select")
+# --- Whole Group Actions ---
+with st.expander("🛠️ Whole Group Actions"):
+    st.subheader("Select Group Action")
 
-if st.button("Confirm Care Action"):
-    timestamp = now_timestamp()
-    for _, row_values in rows_with_index:
-        child_name = row_values[headers.index("child")]
-        log_sheet.append_row([timestamp, selected_care_action, staff, child_name, care_actions[selected_care_action]])
-    st.success(f"✅ {selected_care_action} logged for all children under {staff}")
-    st.rerun()
+    action_options = {
+        "Care Actions": {
+            "Ate": "Meal Confirmed",
+            "Hydration": "Hydration Confirmed",
+            "Sunscreen": "Sunscreen Applied",
+            "Accurate Headcount": "Headcount Confirmed"
+        },
+        "Activity Participation": {
+            "STEM": "STEM Activity Completed",
+            "SEL": "SEL Activity Completed",
+            "PE": "Physical Education Activity Completed",
+            "ARTS": "Arts & Crafts Completed"
+        }
+    }
 
-# --- Per Child Loop ---
-st.subheader("Children")
+    category = st.radio("Action Type", list(action_options.keys()), key="category_select")
+    action_dict = action_options[category]
+    selected_action = st.selectbox(f"Select {category[:-1]}", list(action_dict.keys()), key="action_select")
+
+    if st.button(f"Confirm {category[:-1]}"):
+        timestamp = now_timestamp()
+        for _, row_values in rows_with_index:
+            child_name = row_values[headers.index("child")]
+            log_sheet.append_row([
+                timestamp,
+                selected_action,
+                staff,
+                child_name,
+                action_dict[selected_action]
+            ])
+        st.success(f"✅ {selected_action} logged for all children under {staff}")
+        st.rerun()
+
+# --- Per Child Actions ---
+st.divider()
+st.subheader("Children ", divider="gray")
+
+total_children = len(data)
+staff_children = len(rows_with_index)
+
+
+st.write(f"🏕️ Total in Center: **{total_children}**")
+st.write(f"🧑‍🏫 Under {staff}: **{staff_children}**")
+
+
 for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
     child_name = row_values[headers.index("child")]
     with st.expander(f"{child_name}"):
@@ -126,10 +156,10 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
             st.success("Incident logged!")
             st.rerun()
 
-        # if st.button(f"Snack ✅ for {child_name}", key=f"snack_{i}"):
-        #     log_sheet.append_row([now_timestamp(), "SNACK", staff, child_name, "Snack Provided"])
-        #     st.success(f"Snack logged for {child_name}")
-        #     st.rerun()
+        if st.button(f"Snack ✅ for {child_name}", key=f"snack_{i}"):
+            log_sheet.append_row([now_timestamp(), "SNACK", staff, child_name, "Snack Provided"])
+            st.success(f"Snack logged for {child_name}")
+            st.rerun()
 
         st.write("🔄 Reassign this child:")
         new_staff_for_child = st.selectbox(f"Move {child_name} to another staff:",
@@ -149,8 +179,6 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
             st.success(f"{child_name} reassigned!")
             st.rerun()
 
-            # --- Checkout Button ---
-            # --- Checkout Button With Confirmation ---
         if f"confirm_checkout_{i}" not in st.session_state:
             st.session_state[f"confirm_checkout_{i}"] = False
 
@@ -170,15 +198,16 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
                         child_name,
                         "Child Checked Out"
                     ])
-                    st.success(f"{child_name} checked out successfully.")
                     del st.session_state[f"confirm_checkout_{i}"]
+                    st.success(f"{child_name} checked out successfully.")
                     st.rerun()
             with col_cancel:
                 if st.button("Cancel", key=f"cancel_button_{i}"):
                     st.session_state[f"confirm_checkout_{i}"] = False
 
+# --- Add Child ---
+st.divider()
 
-# --- Add New Child ---
 st.subheader("Add Child")
 new_child = st.text_input("Child name", key="new_child_global")
 if st.button("Add Child"):
@@ -187,84 +216,97 @@ if st.button("Add Child"):
         log_sheet.append_row([now_timestamp(), "Add", staff, new_child.strip(), "Added"])
         st.rerun()
 
-# # --- Activity Participation (Whole Group) ---
-# st.subheader("Activity Participation (Whole Group)")
-# activity_actions = {
-#     "STEM": "STEM Activity Completed",
-#     "SEL": "SEL Activity Completed",
-#     "PE": "Physical Education Activity Completed",
-#     "ARTS": "Arts & Crafts Completed"
-# }
-# selected_activity = st.selectbox("Select Activity", list(activity_actions.keys()), key="activity_action_select")
-# 
-# if st.button("Confirm Activity Participation"):
-#     timestamp = now_timestamp()
-#     for _, row_values in rows_with_index:
-#         child_name = row_values[headers.index("child")]
-#         log_sheet.append_row([timestamp, selected_activity, staff, child_name, activity_actions[selected_activity]])
-#     st.success(f"✅ {selected_activity} logged for all children under {staff}")
-#     st.rerun()
+# --- Bulk Move ---
+with st.expander("🔄 Shift Change - Bulk Move Children"):
+    col1, col2 = st.columns(2)
+    with col1:
+        from_staff = st.selectbox("From Staff", [s for s in STAFF if s], key="from_swap")
+    with col2:
+        to_staff = st.selectbox("To Staff", [s for s in STAFF if s], key="to_swap")
 
-# --- Staff Swap ---
-st.header("Shift Change - Staff Swap")
-col1, col2 = st.columns(2)
-with col1:
-    from_staff = st.selectbox("From Staff", [s for s in STAFF if s], key="from_swap")
-with col2:
-    to_staff = st.selectbox("To Staff", [s for s in STAFF if s], key="to_swap")
+    if st.button("Swap Roles (move all children)"):
+        count = 0
+        for idx, row in enumerate(rows[1:], start=2):
+            if row[headers.index("staff")] == from_staff:
+                sheet.update_cell(idx, headers.index("staff")+1, to_staff)
+                log_sheet.append_row([
+                    now_timestamp(),
+                    "Role Swap",
+                    to_staff,
+                    row[headers.index("child")],
+                    f"Moved from {from_staff} to {to_staff}"
+                ])
+                count += 1
+        st.success(f"Moved {count} children from {from_staff} to {to_staff}")
+        st.rerun()
 
-if st.button("Swap Roles (move all children)"):
-    count = 0
-    for idx, row in enumerate(rows[1:], start=2):
-        if row[headers.index("staff")] == from_staff:
-            sheet.update_cell(idx, headers.index("staff")+1, to_staff)
-            log_sheet.append_row([
-                now_timestamp(),
-                "Role Swap",
-                to_staff,
-                row[headers.index("child")],
-                f"Moved from {from_staff} to {to_staff}"
-            ])
-            count += 1
-    st.success(f"Moved {count} children from {from_staff} to {to_staff}")
-    st.rerun()
+# --- Sidebar: Daily Staff Memo ---
+with st.sidebar:
+    st.markdown("---")  # clean divider
+
+    st.header("📋 Staff Memo")
+
+    memo_rows = memo_sheet.get_all_values()
+    memo_headers = memo_rows[0]
+    memo_data = pd.DataFrame(memo_rows[1:], columns=memo_headers) if len(memo_rows) > 1 else pd.DataFrame(columns=["staff", "date", "memo"])
+
+    staff_memos = memo_data[(memo_data["staff"] == staff) & (memo_data["date"] == today)]
+
+    if not staff_memos.empty:
+        for _, row in staff_memos.iterrows():
+            st.markdown(row["memo"])
+    else:
+        st.write("✅ No memo assigned for today.")
 
 # --- Full Child History ---
-st.header("Child Full History")
+st.divider()
+st.subheader("Child Full History", divider="gray")
 
+# Load incidents
 incident_rows = incident_sheet.get_all_values()
 incident_data = pd.DataFrame(incident_rows[1:], columns=incident_rows[0]) if len(incident_rows) > 1 else pd.DataFrame(columns=["timestamp", "staff", "child", "incident"])
 
+# Load logs
 log_rows = log_sheet.get_all_values()
 log_data = pd.DataFrame(log_rows[1:], columns=log_rows[0]) if len(log_rows) > 1 else pd.DataFrame(columns=["timestamp", "action", "staff", "child", "log_text"])
 
-all_children = data["child"].dropna().unique().tolist()
+# Parse timestamps for logs
+log_data["parsed_date"] = pd.to_datetime(log_data["timestamp"], format="%B %d, %Y %I:%M %p")
+today_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
+
+# Build child list from today's logs and all incidents
+children_in_logs_today = today_logs["child"].dropna().unique().tolist()
+children_in_incidents = incident_data["child"].dropna().unique().tolist()
+all_children = sorted(list(set(children_in_logs_today + children_in_incidents)))
+
+# Select child
 selected_child = st.selectbox("Select Child for History:", all_children)
 
-# Incidents First
-child_incidents = incident_data[incident_data["child"] == selected_child]
-if not child_incidents.empty:
-    st.subheader("📋 Incidents")
-    for _, row in child_incidents.iterrows():
-        st.write(f"🟥 {row['timestamp']} — {row['staff']}: {row['incident']}")
-else:
-    st.write("✅ No incidents logged.")
+# Everything inside one collapsible
+with st.expander(f"📋 Full History for {selected_child}"):
 
-# Log After
-emoji_map = {
-    "Ate": "🍽️", "Hydration": "💧", "Sunscreen": "☀️", "Accurate Headcount": "👥",
-    "STEM": "🔬", "SEL": "🧠", "PE": "🏃", "ARTS": "🎨",
-    "SNACK": "🍎", "Add": "➕", "Role Swap": "🔄", "Remove": "❌", "Move": "🚚", "Location Update": "📍"
-}
+    # Incidents first (all-time)
+    child_incidents = incident_data[incident_data["child"] == selected_child]
+    if not child_incidents.empty:
+        st.subheader("Incidents")
+        for _, row in child_incidents.iterrows():
+            st.write(f"🟥 {row['timestamp']} — {row['staff']}: {row['incident']}")
+    else:
+        st.write("✅ No incidents logged.")
 
-# Filter logs to today's date for Activity Log
-log_data["parsed_date"] = pd.to_datetime(log_data["timestamp"], format="%B %d, %Y %I:%M %p")
-today_only_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
-child_logs = today_only_logs[today_only_logs["child"] == selected_child]
-if not child_logs.empty:
-    st.subheader("📋 Activity Log")
-    for _, row in child_logs.iterrows():
-        emoji = emoji_map.get(row['action'], "📝")
-        st.write(f"{row['timestamp']} — {emoji} {row['action']} — {row['staff']}: {row['log_text']}")
-else:
-    st.write("✅ No logs found.")
+    # Today's logs
+    child_logs = today_logs[today_logs["child"] == selected_child]
+    emoji_map = {
+        "Ate": "🍽️", "Hydration": "💧", "Sunscreen": "☀️", "Accurate Headcount": "👥",
+        "STEM": "🔬", "SEL": "🧠", "PE": "🏃", "ARTS": "🎨",
+        "SNACK": "🍎", "Add": "➕", "Role Swap": "🔄", "Remove": "❌", "Move": "🚚",
+        "Location Update": "📍", "Checkout": "🚪"
+    }
+
+    if not child_logs.empty:
+        st.subheader("Activity Log (Today)")
+        for _, row in child_logs.iterrows():
+            emoji = emoji_map.get(row['action'], "📝")
+            st.write(f"{row['timestamp']} — {emoji} {row['action']} — {row['staff']}: {row['log_text']}")
+    else:
+        st.write("✅ No activity logs found for today.")
