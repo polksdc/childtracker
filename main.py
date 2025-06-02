@@ -43,16 +43,77 @@ incidents_ref = db.reference("incidents")
 memos_ref = db.reference("memos")
 meta_ref = db.reference("meta")
 
-# --- Daily Reset Logic ---
-last_reset = meta_ref.child("last_reset").get()
-today = today_date()
+# --- Navigation ---
+st.sidebar.title("🧭 Navigation")
+page = st.sidebar.radio("Go to:", ["Dashboard", "Center Overview", "Memo Editor"])
 
-if last_reset != today:
-    st.warning("New day detected! Resetting assignment sheet...")
-    assignments_ref.delete()
-    meta_ref.child("last_reset").set(today)
-else:
-    st.success(f"Data loaded for today: {today}")
+# --- Early exit for Dashboard mode (your current code is "Dashboard") ---
+if page != "Dashboard":
+    st.experimental_set_query_params(page=page)  # preserve page state
+
+# --- Center Overview ---
+if page == "Center Overview":
+    st.title("🧭 Full Center Overview")
+
+    # Load full assignments data
+    assignments_data = assignments_ref.get() or {}
+    rows = []
+    for k, v in assignments_data.items():
+        rows.append({
+            "Child": v['name'],
+            "Staff": v['staff'],
+            "Location": v['location']
+        })
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        st.info("No active children in the center.")
+    else:
+        st.write(f"👶 Total children: **{len(df)}**")
+        st.dataframe(df.sort_values(by=["Staff", "Location"]))
+
+    st.stop()  # prevent rest of code from running on this page
+
+# --- Memo Editor ---
+if page == "Memo Editor":
+    st.title("📝 Staff Memo Editor")
+
+    # Load staff list again
+    staff_data = staff_ref.get() or {}
+    STAFF_MEMO = [v["name"] for v in staff_data.values()]
+    STAFF_MEMO.insert(0, "")
+
+    staff_selected = st.selectbox("Select Staff", STAFF_MEMO)
+    today = today_date()
+
+    if staff_selected:
+        # Load existing memos
+        memos_data = memos_ref.get() or {}
+        memo_key = None
+        memo_text = ""
+
+        for key, memo in memos_data.items():
+            if memo.get("staff") == staff_selected and memo.get("date") == today:
+                memo_key = key
+                memo_text = memo.get("memo", "")
+                break
+
+        new_memo = st.text_area("Enter Memo (Markdown supported):", value=memo_text, height=300)
+
+        if st.button("Save Memo"):
+            if memo_key:
+                memos_ref.child(memo_key).update({"memo": new_memo})
+                st.success("Memo updated!")
+            else:
+                memos_ref.push({
+                    "staff": staff_selected,
+                    "date": today,
+                    "memo": new_memo
+                })
+                st.success("Memo created!")
+
+    st.stop()  # prevent rest of code from running on this page
+
 
 # --- Load Staff List ---
 staff_data = staff_ref.get() or {}
