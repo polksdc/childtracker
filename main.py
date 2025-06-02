@@ -67,6 +67,7 @@ for k, v in assignments_raw.items():
     })
 data = pd.DataFrame(rows, columns=["id", "staff", "child"])
 
+#test
 # --- PAGE NAVIGATION ---
 page = st.sidebar.radio("📂 Navigate", ["👩‍🏫 Staff View", "📊 Admin View", "📝 Memo Management"])
 
