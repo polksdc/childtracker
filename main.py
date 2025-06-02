@@ -202,13 +202,13 @@ if page == "👩‍🏫 Staff View":
                 })
                 st.success(f"Snack logged")
                 st.rerun()
-
-new_staff_for_child = st.selectbox(
-    "Reassign:", 
-    [s for s in STAFF if s], 
-    index=STAFF.index(staff) if staff in STAFF else 0, 
-    key=f"move_{i}"
-)
+            
+            new_staff_for_child = st.selectbox(
+                "Reassign:", 
+                [s for s in STAFF if s], 
+                index=STAFF.index(staff) if staff in STAFF else 0, 
+                key=f"move_{i}"
+            )
             if st.button(f"Confirm Move", key=f"btn_move_{i}"):
                 assignments_ref.child(child_id).update({"staff": new_staff_for_child, "child": child_name})
                 logs_ref.push({
