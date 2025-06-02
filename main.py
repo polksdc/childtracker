@@ -1,6 +1,6 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
+import firebase_admin
+from firebase_admin import credentials, db
 import pandas as pd
 import datetime
 from pytz import timezone
@@ -12,60 +12,64 @@ MT = timezone("US/Mountain")
 def now_timestamp():
     return datetime.datetime.now(MT).strftime("%B %d, %Y %I:%M %p")
 
-# --- Google Sheets Setup ---
-@st.cache_resource
-def get_gsheet():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
+def today_date():
+    return datetime.datetime.now(MT).date().isoformat()
 
-    credentials = Credentials.from_service_account_info(st.secrets["google"], scopes=scopes)
-    client = gspread.authorize(credentials)
-    spreadsheet = client.open_by_key("1y9OvIk1X5x2qoMxLJUAxxlUa4ZjlYDIXWzbatRABEzs")
+# --- Firebase Init ---
+if 'firebase_initialized' not in st.session_state:
+    firebase_secret = st.secrets["firebase"]
+    cred = credentials.Certificate({
+        "type": firebase_secret["type"],
+        "project_id": firebase_secret["project_id"],
+        "private_key_id": firebase_secret["private_key_id"],
+        "private_key": firebase_secret["private_key"].replace('\\n', '\n'),
+        "client_email": firebase_secret["client_email"],
+        "client_id": firebase_secret["client_id"],
+        "auth_uri": firebase_secret["auth_uri"],
+        "token_uri": firebase_secret["token_uri"],
+        "auth_provider_x509_cert_url": firebase_secret["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": firebase_secret["client_x509_cert_url"]
+    })
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://group-manager-a55a2-default-rtdb.firebaseio.com'
+    })
+    st.session_state['firebase_initialized'] = True
 
-    assignments = spreadsheet.worksheet("assignments")
-    meta = spreadsheet.worksheet("meta")
-    log = spreadsheet.worksheet("log")
-    staff_sheet = spreadsheet.worksheet("staff")
-    incidents = spreadsheet.worksheet("incidents")
-    memos = spreadsheet.worksheet("memos")
-
-    return spreadsheet, assignments, meta, log, staff_sheet, incidents, memos
-
-# Load Sheets
-spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet, incident_sheet, memo_sheet = get_gsheet()
-
-# --- UI Styling ---
-st.markdown("""
-    <style>
-    html, body, [class*="css"]  {
-        font-size: 18px !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# --- DB References ---
+staff_ref = db.reference("staff")
+assignments_ref = db.reference("assignments")
+logs_ref = db.reference("logs")
+incidents_ref = db.reference("incidents")
+memos_ref = db.reference("memos")
+meta_ref = db.reference("meta")
 
 # --- Daily Reset Logic ---
-last_reset_cell = meta_sheet.acell('B1').value
-today = datetime.datetime.now(MT).date().isoformat()
+last_reset = meta_ref.child("last_reset").get()
+today = today_date()
 
-if last_reset_cell != today:
+if last_reset != today:
     st.warning("New day detected! Resetting assignment sheet...")
-    sheet.resize(1)
-    meta_sheet.update('B1', [[today]])
+    assignments_ref.delete()
+    meta_ref.child("last_reset").set(today)
 else:
     st.success(f"Data loaded for today: {today}")
 
 # --- Load Staff List ---
-staff_rows = staff_sheet.get_all_values()
-STAFF = [row[0].strip() for row in staff_rows if row and row[0].strip()]
+staff_data = staff_ref.get() or {}
+STAFF = [v["name"] for v in staff_data.values()]
 STAFF.insert(0, "")
 
 # --- Load Assignments ---
-rows = sheet.get_all_values()
-headers = [h.lower() for h in rows[0]] if rows else ['staff', 'location', 'child']
-data = pd.DataFrame(rows[1:], columns=headers) if len(rows) > 1 else pd.DataFrame(columns=headers)
-data.columns = [col.lower() for col in data.columns]
+
+# --- Load Assignments ---
+assignments_data = assignments_ref.get() or {}
+rows = []
+for k, v in assignments_data.items():
+    rows.append({"id": k, "staff": v['staff'], "location": v['location'], "child": v['name']})
+
+# ✅ This is the only change:
+data = pd.DataFrame(rows, columns=["id", "staff", "location", "child"])
+
 
 # --- Main UI ---
 st.title("SDC Dashboard :sunglasses:")
@@ -80,25 +84,21 @@ location = locations[0] if len(locations) > 0 else ""
 new_location = st.text_input("Location:", value=location)
 
 if location != new_location:
-    for idx, row in enumerate(rows[1:], start=2):
-        if row[headers.index("staff")] == staff:
-            sheet.update_cell(idx, headers.index("location")+1, new_location)
-            log_sheet.append_row([
-                now_timestamp(),
-                "Location Update",
-                staff,
-                row[headers.index("child")],
-                f"Updated location to {new_location}"
-            ])
+    for index, row in staff_data.iterrows():
+        assignments_ref.child(row["id"]).update({"location": new_location})
+        logs_ref.push({
+            "timestamp": now_timestamp(),
+            "action": "Location Update",
+            "staff": staff,
+            "child": row["child"],
+            "notes": f"Updated location to {new_location}"
+        })
     location = new_location
 
-rows_with_index = [
-    (idx, row) for idx, row in enumerate(rows[1:], start=2)
-    if row[headers.index("staff")] == staff
-]
+rows_with_index = staff_data.to_dict(orient="records")
 
 st.info(
-    f""" 
+    """
 - **KEEP LOCATION UPDATED 🎯**
 - 🧑‍🤝‍🧑 Count actual heads. 
 - ☀️ Apply sunscreen for outside. EVERY TIME.
@@ -130,15 +130,14 @@ with st.expander("🛠️ Whole Group Actions", expanded=True):
 
     if st.button(f"Confirm {category[:-1]}"):
         timestamp = now_timestamp()
-        for _, row_values in rows_with_index:
-            child_name = row_values[headers.index("child")]
-            log_sheet.append_row([
-                timestamp,
-                selected_action,
-                staff,
-                child_name,
-                action_dict[selected_action]
-            ])
+        for row in rows_with_index:
+            logs_ref.push({
+                "timestamp": timestamp,
+                "action": selected_action,
+                "staff": staff,
+                "child": row["child"],
+                "notes": action_dict[selected_action]
+            })
         st.success(f"✅ {selected_action} logged for all children under {staff}")
         st.rerun()
 
@@ -151,20 +150,33 @@ staff_children = len(rows_with_index)
 st.write(f"🏕️ Total in Center: **{total_children}**")
 st.write(f"🧑‍🏫 Under {staff}: **{staff_children}**")
 
-for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
-    child_name = row_values[headers.index("child")]
+for i, row in enumerate(rows_with_index):
+    child_name = row["child"]
+    child_id = row["id"]
+
     with st.expander(f"**{child_name}**"):
         st.write(f"Assigned to: {staff}")
         st.write(f"Location: {new_location}")
 
         incident_note = st.text_input(f"Log incident for {child_name}:", key=f"incident_{i}")
         if st.button(f"Save Incident for {child_name}", key=f"save_incident_{i}"):
-            incident_sheet.append_row([now_timestamp(), staff, child_name, incident_note])
+            incidents_ref.push({
+                "timestamp": now_timestamp(),
+                "staff": staff,
+                "child": child_name,
+                "note": incident_note
+            })
             st.success("Incident logged!")
             st.rerun()
 
         if st.button(f"Snack ✅ for {child_name}", key=f"snack_{i}"):
-            log_sheet.append_row([now_timestamp(), "SNACK", staff, child_name, "Snack Provided"])
+            logs_ref.push({
+                "timestamp": now_timestamp(),
+                "action": "SNACK",
+                "staff": staff,
+                "child": child_name,
+                "notes": "Snack Provided"
+            })
             st.success(f"Snack logged for {child_name}")
             st.rerun()
 
@@ -174,15 +186,14 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
                                            index=STAFF.index(staff), key=f"staff_move_{i}")
 
         if st.button(f"Confirm Move for {child_name}", key=f"confirm_move_{i}"):
-            sheet.delete_rows(sheet_row_num)
-            sheet.append_row([new_staff_for_child, new_location, child_name])
-            log_sheet.append_row([
-                now_timestamp(),
-                "Move",
-                new_staff_for_child,
-                child_name,
-                f"Moved from {staff} to {new_staff_for_child}"
-            ])
+            assignments_ref.child(child_id).update({"staff": new_staff_for_child})
+            logs_ref.push({
+                "timestamp": now_timestamp(),
+                "action": "Move",
+                "staff": new_staff_for_child,
+                "child": child_name,
+                "notes": f"Moved from {staff} to {new_staff_for_child}"
+            })
             st.success(f"{child_name} reassigned!")
             st.rerun()
 
@@ -197,14 +208,14 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
             col_confirm, col_cancel = st.columns(2)
             with col_confirm:
                 if st.button("Confirm", key=f"confirm_button_{i}"):
-                    sheet.delete_rows(sheet_row_num)
-                    log_sheet.append_row([
-                        now_timestamp(),
-                        "Checkout",
-                        staff,
-                        child_name,
-                        "Child Checked Out"
-                    ])
+                    assignments_ref.child(child_id).delete()
+                    logs_ref.push({
+                        "timestamp": now_timestamp(),
+                        "action": "Checkout",
+                        "staff": staff,
+                        "child": child_name,
+                        "notes": "Child Checked Out"
+                    })
                     del st.session_state[f"confirm_checkout_{i}"]
                     st.success(f"{child_name} checked out successfully.")
                     st.rerun()
@@ -217,8 +228,18 @@ st.subheader("Add Child")
 new_child = st.text_input("Child name", key="new_child_global")
 if st.button("Add Child"):
     if new_child.strip():
-        sheet.append_row([staff, new_location, new_child.strip()])
-        log_sheet.append_row([now_timestamp(), "Add", staff, new_child.strip(), "Added"])
+        assignments_ref.push({
+            "name": new_child.strip(),
+            "staff": staff,
+            "location": new_location
+        })
+        logs_ref.push({
+            "timestamp": now_timestamp(),
+            "action": "Add",
+            "staff": staff,
+            "child": new_child.strip(),
+            "notes": "Added"
+        })
         st.rerun()
 
 # --- Bulk Move ---
@@ -231,38 +252,44 @@ with st.expander("🔄 Shift Change - Bulk Move Children"):
 
     if st.button("Swap Roles (move all children)"):
         count = 0
-        for idx, row in enumerate(rows[1:], start=2):
-            if row[headers.index("staff")] == from_staff:
-                sheet.update_cell(idx, headers.index("staff")+1, to_staff)
-                log_sheet.append_row([
-                    now_timestamp(),
-                    "Role Swap",
-                    to_staff,
-                    row[headers.index("child")],
-                    f"Moved from {from_staff} to {to_staff}"
-                ])
-                count += 1
+        for row in data[data["staff"] == from_staff].itertuples():
+            assignments_ref.child(row.id).update({"staff": to_staff})
+            logs_ref.push({
+                "timestamp": now_timestamp(),
+                "action": "Role Swap",
+                "staff": to_staff,
+                "child": row.child,
+                "notes": f"Moved from {from_staff} to {to_staff}"
+            })
+            count += 1
         st.success(f"Moved {count} children from {from_staff} to {to_staff}")
         st.rerun()
 
-# --- Sidebar Memos ---
 with st.sidebar:
-    st.header("📋 Staff Memos:")
-    memo_rows = memo_sheet.get_all_values()
-    memo_headers = memo_rows[0]
-    memo_data = pd.DataFrame(memo_rows[1:], columns=memo_headers) if len(memo_rows) > 1 else pd.DataFrame(columns=["staff", "date", "memo"])
-    staff_memos = memo_data[(memo_data["staff"] == staff) & (memo_data["date"] == today)]
+    with st.sidebar:
+        st.header("📋 Staff Memos:")
+        memos_data = memos_ref.get() or {}
 
-    if not staff_memos.empty:
-        for _, row in staff_memos.iterrows():
-            st.markdown(row["memo"])
-    else:
-        st.write("✅ No memo assigned for today.")
+        # Build rows like you had before
+        memo_rows = []
+        for k, v in memos_data.items():
+            memo_rows.append([v.get("staff", ""), v.get("date", ""), v.get("memo", "")])
+
+        memo_headers = ["staff", "date", "memo"]
+        memo_data = pd.DataFrame(memo_rows, columns=memo_headers) if memo_rows else pd.DataFrame(columns=memo_headers)
+
+        staff_memos = memo_data[(memo_data["staff"] == staff) & (memo_data["date"] == today)]
+
+        if not staff_memos.empty:
+            for _, row in staff_memos.iterrows():
+                st.markdown(row["memo"])
+        else:
+            st.write("✅ No memo assigned for today.")
 
 # --- Allow Adding Staff ---
 st.sidebar.subheader("Manage Staff List")
 new_staff = st.sidebar.text_input("Add new staff member:")
 if st.sidebar.button("Add Staff"):
     if new_staff.strip() and new_staff.strip() not in STAFF:
-        staff_sheet.append_row([new_staff.strip()])
+        staff_ref.push({"name": new_staff.strip()})
         st.rerun()

@@ -1,11 +1,11 @@
 import json
 
 # Load your downloaded service account json
-with open("google_key.json", "r") as f:
+with open("Group Manager Firebase Service Account.json", "r") as f:
     data = json.load(f)
 
 # Open a file to write properly formatted toml
-with open(".streamlit/secrets.toml", "w") as f:
+with open(".streamlit/secrets2.toml", "w") as f:
     f.write("[google]\n")
 
     for key, value in data.items():
