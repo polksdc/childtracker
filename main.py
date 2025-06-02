@@ -3,10 +3,14 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import datetime
+from pytz import timezone
+
+# --- Timezone Config ---
+MT = timezone("US/Mountain")
 
 # --- Timestamp Helper ---
 def now_timestamp():
-    return datetime.datetime.now().strftime("%B %d, %Y %I:%M %p")
+    return datetime.datetime.now(MT).strftime("%B %d, %Y %I:%M %p")
 
 # --- Google Sheets Setup ---
 @st.cache_resource
@@ -32,27 +36,22 @@ def get_gsheet():
 # Load Sheets
 spreadsheet, sheet, meta_sheet, log_sheet, staff_sheet, incident_sheet, memo_sheet = get_gsheet()
 
-
-st.markdown(
-    """
+# --- UI Styling ---
+st.markdown("""
     <style>
     html, body, [class*="css"]  {
         font-size: 18px !important;
     }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 # --- Daily Reset Logic ---
 last_reset_cell = meta_sheet.acell('B1').value
-today = datetime.date.today().isoformat()
-# st.write(f"Today's date: {today}")
+today = datetime.datetime.now(MT).date().isoformat()
 
 if last_reset_cell != today:
     st.warning("New day detected! Resetting assignment sheet...")
     sheet.resize(1)
-    sheet.append_row(["staff", "location", "child"])
     meta_sheet.update('B1', [[today]])
 else:
     st.success(f"Data loaded for today: {today}")
@@ -61,8 +60,6 @@ else:
 staff_rows = staff_sheet.get_all_values()
 STAFF = [row[0].strip() for row in staff_rows if row and row[0].strip()]
 STAFF.insert(0, "")
-
-
 
 # --- Load Assignments ---
 rows = sheet.get_all_values()
@@ -99,19 +96,19 @@ rows_with_index = [
     (idx, row) for idx, row in enumerate(rows[1:], start=2)
     if row[headers.index("staff")] == staff
 ]
+
 st.info(
     f""" 
 - **KEEP LOCATION UPDATED 🎯**
-    - 🧑‍🤝‍🧑 Count actual heads. 
-    - ☀️ Apply sunscreen for outside. EVERY TIME.
-    - 💧 Hydrate groups between transitions and during headcount
-    - ✅ Use Care Actions to log everything. 
-        - Announce logs and changes on walkie."""
+- 🧑‍🤝‍🧑 Count actual heads. 
+- ☀️ Apply sunscreen for outside. EVERY TIME.
+- 💧 Hydrate groups between transitions and during headcount.
+- ✅ Use Care Actions to log everything.
+- 📢 Announce logs and changes on walkie."""
 )
 
 # --- Whole Group Actions ---
 with st.expander("🛠️ Whole Group Actions", expanded=True):
-
     action_options = {
         "Care Actions": {
             "Ate": "Meal Confirmed",
@@ -151,10 +148,8 @@ st.subheader("Children ", divider="gray")
 total_children = len(data)
 staff_children = len(rows_with_index)
 
-
 st.write(f"🏕️ Total in Center: **{total_children}**")
 st.write(f"🧑‍🏫 Under {staff}: **{staff_children}**")
-
 
 for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
     child_name = row_values[headers.index("child")]
@@ -218,7 +213,6 @@ for i, (sheet_row_num, row_values) in enumerate(rows_with_index):
                     st.session_state[f"confirm_checkout_{i}"] = False
 
 # --- Add Child ---
-
 st.subheader("Add Child")
 new_child = st.text_input("Child name", key="new_child_global")
 if st.button("Add Child"):
@@ -251,15 +245,12 @@ with st.expander("🔄 Shift Change - Bulk Move Children"):
         st.success(f"Moved {count} children from {from_staff} to {to_staff}")
         st.rerun()
 
-# --- Sidebar: Daily Staff Memo ---
+# --- Sidebar Memos ---
 with st.sidebar:
-
     st.header("📋 Staff Memos:")
-
     memo_rows = memo_sheet.get_all_values()
     memo_headers = memo_rows[0]
     memo_data = pd.DataFrame(memo_rows[1:], columns=memo_headers) if len(memo_rows) > 1 else pd.DataFrame(columns=["staff", "date", "memo"])
-
     staff_memos = memo_data[(memo_data["staff"] == staff) & (memo_data["date"] == today)]
 
     if not staff_memos.empty:
@@ -267,75 +258,7 @@ with st.sidebar:
             st.markdown(row["memo"])
     else:
         st.write("✅ No memo assigned for today.")
-    st.divider()
-# --- Full Child History ---
-st.divider()
 
-# Load incidents
-incident_rows = incident_sheet.get_all_values()
-incident_data = pd.DataFrame(incident_rows[1:], columns=incident_rows[0]) if len(incident_rows) > 1 else pd.DataFrame(columns=["timestamp", "staff", "child", "incident"])
-
-# Load logs
-log_rows = log_sheet.get_all_values()
-log_data = pd.DataFrame(log_rows[1:], columns=log_rows[0]) if len(log_rows) > 1 else pd.DataFrame(columns=["timestamp", "action", "staff", "child", "log_text"])
-
-# Parse timestamps for logs
-log_data["parsed_date"] = pd.to_datetime(log_data["timestamp"], format="%B %d, %Y %I:%M %p")
-today_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
-
-# Build child list from today's logs and all incidents
-children_in_logs_today = today_logs["child"].dropna().unique().tolist()
-children_in_incidents = incident_data["child"].dropna().unique().tolist()
-all_children = sorted(list(set(children_in_logs_today + children_in_incidents)))
-# --- Full Child History ---
-
-with st.expander("📋 Child Full History"):
-
-    # Load incidents
-    incident_rows = incident_sheet.get_all_values()
-    incident_data = pd.DataFrame(incident_rows[1:], columns=incident_rows[0]) if len(incident_rows) > 1 else pd.DataFrame(columns=["timestamp", "staff", "child", "incident"])
-
-    # Load logs
-    log_rows = log_sheet.get_all_values()
-    log_data = pd.DataFrame(log_rows[1:], columns=log_rows[0]) if len(log_rows) > 1 else pd.DataFrame(columns=["timestamp", "action", "staff", "child", "log_text"])
-
-    # Parse timestamps for logs
-    log_data["parsed_date"] = pd.to_datetime(log_data["timestamp"], format="%B %d, %Y %I:%M %p")
-    today_logs = log_data[log_data["parsed_date"].dt.date == datetime.date.today()]
-
-    # Build child list from today's logs and all incidents
-    children_in_logs_today = today_logs["child"].dropna().unique().tolist()
-    children_in_incidents = incident_data["child"].dropna().unique().tolist()
-    all_children = sorted(list(set(children_in_logs_today + children_in_incidents)))
-
-    # Dropdown inside the expander
-    selected_child = st.selectbox("Select Child:", all_children)
-
-    st.markdown("---")
-
-    # First incidents (all-time)
-    child_incidents = incident_data[incident_data["child"] == selected_child]
-    if not child_incidents.empty:
-        for _, row in child_incidents.iterrows():
-            st.write(f"🟥 {row['timestamp']} — {row['staff']}: {row['incident']}")
-    else:
-        st.write("✅ No incidents logged.")
-
-    # Then today's logs
-    child_logs = today_logs[today_logs["child"] == selected_child]
-    emoji_map = {
-        "Ate": "🍽️", "Hydration": "💧", "Sunscreen": "☀️", "Accurate Headcount": "👥",
-        "STEM": "🔬", "SEL": "🧠", "PE": "🏃", "ARTS": "🎨",
-        "SNACK": "🍎", "Add": "➕", "Role Swap": "🔄", "Remove": "❌", "Move": "🚚",
-        "Location Update": "📍", "Checkout": "🚪"
-    }
-
-    if not child_logs.empty:
-        for _, row in child_logs.iterrows():
-            emoji = emoji_map.get(row['action'], "📝")
-            st.write(f"{row['timestamp']} — {emoji} {row['action']} — {row['staff']}: {row['log_text']}")
-    else:
-        st.write("✅ No activity logs found for today.")
 # --- Allow Adding Staff ---
 st.sidebar.subheader("Manage Staff List")
 new_staff = st.sidebar.text_input("Add new staff member:")
