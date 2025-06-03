@@ -257,6 +257,168 @@ if page == "Admin View":
 
     st.divider()
 
+    # Database Management
+    st.header("🗄️ Database Management")
+    
+    db_section = st.selectbox("Select Database:", [
+        "Staff Records",
+        "Assignment Records",
+        "Log Records",
+        "Incident Records",
+        "Memo Records"
+    ])
+
+    if db_section == "Staff Records":
+        st.subheader("👥 Staff Records")
+        staff_records = []
+        for k, v in staff_data.items():
+            staff_records.append({
+                "id": k,
+                "name": v.get("name", ""),
+                "location": v.get("location", "")
+            })
+        staff_df = pd.DataFrame(staff_records)
+        if not staff_df.empty:
+            st.dataframe(staff_df, use_container_width=True)
+            selected_staff_id = st.selectbox("Select Record to Remove:", staff_df["id"], format_func=lambda x: f"{staff_df[staff_df['id'] == x]['name'].iloc[0]} ({x})")
+            if selected_staff_id:
+                staff_name = staff_df[staff_df["id"] == selected_staff_id]["name"].iloc[0]
+                if st.button(f"🗑️ Remove Staff: {staff_name}"):
+                    staff_ref.child(selected_staff_id).delete()
+                    st.success(f"✅ Removed staff record for {staff_name}")
+                    st.rerun()
+        else:
+            st.info("No staff records found")
+
+    elif db_section == "Assignment Records":
+        st.subheader("📋 Assignment Records")
+        assignment_records = []
+        for k, v in assignments_data.items():
+            assignment_records.append({
+                "id": k,
+                "staff": v.get("staff", ""),
+                "child": v.get("child", "")
+            })
+        assignments_df = pd.DataFrame(assignment_records)
+        if not assignments_df.empty:
+            st.dataframe(assignments_df, use_container_width=True)
+            selected_assignment_id = st.selectbox("Select Record to Remove:", assignments_df["id"], 
+                format_func=lambda x: f"{assignments_df[assignments_df['id'] == x]['child'].iloc[0]} (assigned to {assignments_df[assignments_df['id'] == x]['staff'].iloc[0]})")
+            if selected_assignment_id:
+                child_name = assignments_df[assignments_df["id"] == selected_assignment_id]["child"].iloc[0]
+                if st.button(f"🗑️ Remove Assignment: {child_name}"):
+                    assignments_ref.child(selected_assignment_id).delete()
+                    st.success(f"✅ Removed assignment record for {child_name}")
+                    st.rerun()
+        else:
+            st.info("No assignment records found")
+
+    elif db_section == "Log Records":
+        st.subheader("📝 Log Records")
+        log_records = []
+        for k, v in logs_data.items():
+            log_records.append({
+                "id": k,
+                "timestamp": v.get("timestamp", ""),
+                "action": v.get("action", ""),
+                "staff": v.get("staff", ""),
+                "child": v.get("child", ""),
+                "notes": v.get("notes", "")
+            })
+        logs_df = pd.DataFrame(log_records)
+        if not logs_df.empty:
+            st.dataframe(logs_df, use_container_width=True)
+            selected_log_id = st.selectbox("Select Record to Remove:", logs_df["id"], 
+                format_func=lambda x: f"{logs_df[logs_df['id'] == x]['timestamp'].iloc[0]} - {logs_df[logs_df['id'] == x]['action'].iloc[0]}")
+            if selected_log_id:
+                log_info = logs_df[logs_df["id"] == selected_log_id].iloc[0]
+                if st.button(f"🗑️ Remove Log: {log_info['timestamp']} - {log_info['action']}"):
+                    logs_ref.child(selected_log_id).delete()
+                    st.success("✅ Removed log record")
+                    st.rerun()
+        else:
+            st.info("No log records found")
+
+    elif db_section == "Incident Records":
+        st.subheader("⚠️ Incident Records")
+        incident_records = []
+        for k, v in incidents_data.items():
+            incident_records.append({
+                "id": k,
+                "timestamp": v.get("timestamp", ""),
+                "staff": v.get("staff", ""),
+                "child": v.get("child", ""),
+                "note": v.get("note", "")
+            })
+        incidents_df = pd.DataFrame(incident_records)
+        if not incidents_df.empty:
+            st.dataframe(incidents_df, use_container_width=True)
+            selected_incident_id = st.selectbox("Select Record to Remove:", incidents_df["id"], 
+                format_func=lambda x: f"{incidents_df[incidents_df['id'] == x]['timestamp'].iloc[0]} - {incidents_df[incidents_df['id'] == x]['child'].iloc[0]}")
+            if selected_incident_id:
+                incident_info = incidents_df[incidents_df["id"] == selected_incident_id].iloc[0]
+                if st.button(f"🗑️ Remove Incident: {incident_info['timestamp']} - {incident_info['child']}"):
+                    incidents_ref.child(selected_incident_id).delete()
+                    st.success("✅ Removed incident record")
+                    st.rerun()
+        else:
+            st.info("No incident records found")
+
+    elif db_section == "Memo Records":
+        st.subheader("📝 Memo Records")
+        memo_records = []
+        for k, v in memos_data.items():
+            memo_records.append({
+                "id": k,
+                "staff": v.get("staff", ""),
+                "date": v.get("date", ""),
+                "memo": v.get("memo", "")
+            })
+        memos_df = pd.DataFrame(memo_records)
+        if not memos_df.empty:
+            st.dataframe(memos_df, use_container_width=True)
+            selected_memo_id = st.selectbox("Select Record to Remove:", memos_df["id"], 
+                format_func=lambda x: f"{memos_df[memos_df['id'] == x]['date'].iloc[0]} - {memos_df[memos_df['id'] == x]['staff'].iloc[0]}")
+            if selected_memo_id:
+                memo_info = memos_df[memos_df["id"] == selected_memo_id].iloc[0]
+                if st.button(f"🗑️ Remove Memo: {memo_info['date']} - {memo_info['staff']}"):
+                    memos_ref.child(selected_memo_id).delete()
+                    st.success("✅ Removed memo record")
+                    st.rerun()
+        else:
+            st.info("No memo records found")
+
+    st.divider()
+
+    # Incidents View
+    st.header("🚨 Incident Reports")
+
+    incident_rows = []
+    for k, v in incidents_data.items():
+        incident_rows.append([
+            v.get("timestamp", ""),
+            v.get("staff", ""),
+            v.get("child", ""),
+            v.get("note", "")
+        ])
+
+    incidents_df = pd.DataFrame(incident_rows, columns=["timestamp", "staff", "child", "note"])
+
+    if incidents_df.empty:
+        st.success("✅ No incidents found.")
+    else:
+        incidents_df["parsed_timestamp"] = pd.to_datetime(incidents_df["timestamp"], format="%B %d, %Y %I:%M %p", errors="coerce")
+        incidents_df = incidents_df.sort_values(by="parsed_timestamp", ascending=False)
+
+        st.dataframe(
+            incidents_df.drop(columns=["parsed_timestamp"]),
+            use_container_width=True,
+            height=400
+        )
+
+
+    st.divider()
+
     # Logs View
     st.header("📄 Logs Summary")
 
