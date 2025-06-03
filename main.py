@@ -29,11 +29,6 @@ cred = credentials.Certificate({
     "client_x509_cert_url": firebase_secret["client_x509_cert_url"]
 })
 
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://group-manager-a55a2-default-rtdb.firebaseio.com'
-    })
-
 staff_ref = db.reference("staff")
 assignments_ref = db.reference("assignments")
 logs_ref = db.reference("logs")
@@ -43,20 +38,26 @@ memos_ref = db.reference("memos")
 def safe_get(ref):
     return ref.get() or {}
 
-# --- DEFAULT STAFF ---
+# --- PRELOADED STAFF DEFAULTS ---
 default_staff_list = ["Fernando", "Leticia", "Kayleece", "Daegon", "Ali", "Hunter", "Melissa"]
 if not staff_ref.get():
     for name in default_staff_list:
         staff_ref.push({"name": name, "location": "N/A"})
     st.success("✅ Default staff loaded")
 
-# --- LOAD STAFF DATA ---
+# --- Load Staff ---
 staff_data_raw = safe_get(staff_ref)
-staff_lookup = {v["name"]: v.get("location", "N/A") for v in staff_data_raw.values()}
-STAFF = list(staff_lookup.keys())
-STAFF.insert(0, "")
+staff_lookup = {}
+for k, v in staff_data_raw.items():
+    staff_lookup[v["name"]] = {
+        "id": k,
+        "location": v.get("location", "N/A")
+    }
 
-# --- LOAD ASSIGNMENTS DATA ---
+STAFF = sorted(list(staff_lookup.keys()))
+STAFF.insert(0, "")  # Add blank entry for selectbox
+
+# --- Load Assignments ---
 assignments_raw = safe_get(assignments_ref)
 rows = []
 for k, v in assignments_raw.items():
@@ -67,7 +68,6 @@ for k, v in assignments_raw.items():
     })
 data = pd.DataFrame(rows, columns=["id", "staff", "child"])
 
-#test
 # --- PAGE NAVIGATION ---
 page = st.sidebar.radio("📂 Navigate", ["👩‍🏫 Staff View", "📊 Admin View", "📝 Memo Management"])
 
@@ -90,41 +90,50 @@ if page == "👩‍🏫 Staff View":
     staff = st.selectbox("Select Staff", STAFF)
     if not staff: st.stop()
 
-    # --- MEMO SIDEBAR ---
-    # --- MEMO SIDEBAR ---
+    # Memo sidebar
     with st.sidebar:
         st.subheader("📋 Today's Memo")
-    
         memos_data = safe_get(memos_ref)
         today_iso = today_date()
-    
-        # Find today's memo for selected staff
         todays_memo = ""
         for v in memos_data.values():
             if v.get("staff") == staff and v.get("date") == today_iso:
                 todays_memo = v.get("memo", "")
                 break
-    
         if todays_memo:
             st.markdown(todays_memo)
         else:
             st.write("✅ No memo assigned today.")
 
-    staff_location = staff_lookup.get(staff, "N/A")
-    new_location = st.text_input("Location:", value=staff_location)
+    # Location update with dropdown:
+    LOCATION_OPTIONS = [
+        "Big Playground", "School Playground", "Field", "Bathroom",
+        "Class 1", "Class 2", "Class 3", "Pool", "Field Trip", "Bus"
+    ]
+
+    staff_location = staff_lookup[staff]["location"]
+    staff_key = staff_lookup[staff]["id"]
+
+    new_location = st.selectbox("Location:", LOCATION_OPTIONS, index=LOCATION_OPTIONS.index(staff_location) if staff_location in LOCATION_OPTIONS else 0)
 
     if staff_location != new_location:
-        for key, value in staff_data_raw.items():
-            if value["name"] == staff:
-                staff_ref.child(key).update({"location": new_location})
-                logs_ref.push({
-                    "timestamp": now_timestamp(),
-                    "action": "Location Update",
-                    "staff": staff,
-                    "child": "[LOCATION UPDATE]",
-                    "notes": f"Updated location to {new_location}"
-                })
-                break
+        staff_ref.child(staff_key).update({"location": new_location})
+
+        # SAFARI / DOUBLE-CLICK PROTECTION (prevent redundant logs)
+        recent_logs = logs_ref.order_by_child("staff").equal_to(staff).get()
+        already_logged = any(
+            v.get("action") == "Location Update" and v.get("notes") == f"Updated location to {new_location}"
+            for v in (recent_logs or {}).values()
+        )
+
+        if not already_logged:
+            logs_ref.push({
+                "timestamp": now_timestamp(),
+                "action": "Location Update",
+                "staff": staff,
+                "child": "[LOCATION UPDATE]",
+                "notes": f"Updated location to {new_location}"
+            })
         st.rerun()
 
     staff_assignments = data[data["staff"] == staff]
@@ -203,12 +212,16 @@ if page == "👩‍🏫 Staff View":
                 st.success(f"Snack logged")
                 st.rerun()
             
+            available_staff = [s for s in STAFF if s]
+            safe_index = available_staff.index(staff) if staff in available_staff else 0
+
             new_staff_for_child = st.selectbox(
                 "Reassign:", 
-                [s for s in STAFF if s], 
-                index=STAFF.index(staff) if staff in STAFF else 0, 
+                available_staff,
+                index=safe_index,
                 key=f"move_{i}"
             )
+
             if st.button(f"Confirm Move", key=f"btn_move_{i}"):
                 assignments_ref.child(child_id).update({"staff": new_staff_for_child, "child": child_name})
                 logs_ref.push({
@@ -246,49 +259,35 @@ if page == "👩‍🏫 Staff View":
                 with col_cancel:
                     if st.button("Cancel", key=f"cancel_button_{i}"):
                         st.session_state[f"confirm_checkout_{i}"] = False
-
-    st.subheader("➕ Add Child")
-    new_child = st.text_input("Child name:", key="new_child_global")
-    if st.button("Add Child"):
-        if new_child.strip():
-            assignments_ref.push({
-                "staff": staff,
-                "child": new_child.strip()
-            })
-            logs_ref.push({
-                "timestamp": now_timestamp(),
-                "action": "Add",
-                "staff": staff,
-                "child": new_child.strip(),
-                "notes": "Added"
-            })
-            st.rerun()
-
+            # --- Bulk Move ---
     with st.expander("🔄 Shift Change - Bulk Move"):
         col1, col2 = st.columns(2)
         with col1:
             from_staff = st.selectbox("From Staff", [s for s in STAFF if s], key="from_swap")
         with col2:
-            to_staff = st.selectbox("To Staff", [s for s in STAFF if s], key="to_swap")
-
+            to_staff = st.selectbox("To Staff", [s for s in STAFF if s and s != from_staff], key="to_swap")
+    
         if st.button("Swap Roles"):
             count = 0
-            staff_assignments = data[data["staff"] == from_staff]
-            for _, row in staff_assignments.iterrows():
-                assignments_ref.child(row["id"]).update({
+            for row in data[data["staff"] == from_staff].itertuples():
+                assignments_ref.child(row.id).update({
                     "staff": to_staff,
-                    "child": row["child"]
+                    "child": row.child
                 })
                 logs_ref.push({
                     "timestamp": now_timestamp(),
                     "action": "Role Swap",
                     "staff": to_staff,
-                    "child": row["child"],
+                    "child": row.child,
                     "notes": f"Moved from {from_staff} to {to_staff}"
                 })
                 count += 1
-            st.success(f"Moved {count} children.")
+            st.success(f"Moved {count} children from {from_staff} to {to_staff}")
             st.rerun()
+
+# ✅ End of STAFF VIEW
+
+# (We keep Admin View and Memo View the same unless you're ready for part 2)
 
 
 
