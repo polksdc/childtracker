@@ -480,7 +480,7 @@ if page == "Admin View":
         st.session_state.confirm_remove_all = 0
         
     if st.session_state.confirm_remove_all == 0:
-        if st.button("Remove All Children"):
+        if st.button("Remove All Children", key="remove_all_top"):
             st.session_state.confirm_remove_all = 1
     elif st.session_state.confirm_remove_all == 1:
         st.error("Are you absolutely sure? This will remove ALL children from the system.")
@@ -619,7 +619,7 @@ if page == "Admin View":
             st.session_state.confirm_remove_all = 0
             
         if st.session_state.confirm_remove_all == 0:
-            if st.button("Remove All Children"):
+            if st.button("Remove All Children", key="remove_all_emergency"):
                 st.session_state.confirm_remove_all = 1
         elif st.session_state.confirm_remove_all == 1:
             st.error("Are you absolutely sure? This will remove ALL children from the system.")
