@@ -1,0 +1,9 @@
+first_name,mid,birthdate,allergies,emergency_contact,emergency_phone,notes,group
+Emma,M123,2018-05-15,None,Jane Smith,555-0123,Likes to read,Butterflies
+Liam,M124,2018-07-22,Peanuts,John Brown,555-0124,Needs inhaler,Dragons
+Olivia,M125,2018-03-10,Dairy,Mary Johnson,555-0125,Loves art,Butterflies
+Noah,M126,2018-09-05,None,Mike Davis,555-0126,Soccer enthusiast,Dragons
+Ava,M127,2018-11-30,Gluten,Sarah Wilson,555-0127,Piano lessons on Thursdays,Butterflies
+James,M128,2018-04-18,None,Tom Anderson,555-0128,Swimming lessons,Dragons
+Isabella,M129,2018-08-25,Eggs,Lisa Garcia,555-0129,Enjoys puzzles,Butterflies
+Oliver,M130,2018-06-12,None,Chris Taylor,555-0130,Baseball practice Tuesdays,Dragons 
