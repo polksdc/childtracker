@@ -5,4 +5,4 @@ pandas>=2.0.0
 duckdb
 pandas
 pytz~=2025.2
-firebase-admin
+firebase_admin>=6.2.0
