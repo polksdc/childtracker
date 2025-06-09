@@ -46,7 +46,7 @@ def safe_get(ref):
     return ref.get() or {}
 
 # --- DEFAULT STAFF ---
-default_staff_list = ["Fernando", "Leticia", "Kayleece", "Daegon", "Ali", "Hunter", "Melissa"]
+default_staff_list = []
 if not staff_ref.get():
     for name in default_staff_list:
         staff_ref.push({"name": name, "location": "Class 1"})
