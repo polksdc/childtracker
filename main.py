@@ -497,18 +497,22 @@ if page == "Admin View":
         with col1:
             if st.button("Confirm Remove All"):
                 # Remove all assignments
-                for key in assignments_data.keys():
-                    assignments_ref.child(key).delete()
-                # Log the action
-                logs_ref.push({
-                    "timestamp": now_timestamp(),
-                    "action": "EMERGENCY",
-                    "staff": "ADMIN",
-                    "child": "ALL",
-                    "notes": "Emergency removal of all children"
-                })
+                assignments_data = safe_get(assignments_ref)
+                if assignments_data:  # Check if there are any assignments
+                    for key in assignments_data.keys():
+                        assignments_ref.child(key).delete()
+                    # Log the action
+                    logs_ref.push({
+                        "timestamp": now_timestamp(),
+                        "action": "EMERGENCY",
+                        "staff": "ADMIN",
+                        "child": "ALL",
+                        "notes": "Emergency removal of all children"
+                    })
+                    st.success("✅ All children have been removed from the system")
+                else:
+                    st.info("No children in the system to remove")
                 st.session_state.confirm_remove_all = 0
-                st.success("✅ All children have been removed from the system")
                 st.rerun()
         with col2:
             if st.button("Cancel Emergency Action"):
@@ -583,32 +587,6 @@ if page == "Admin View":
 
     logs_df = pd.DataFrame(log_rows, columns=["timestamp", "action", "staff", "child", "notes"])
 
-    # Child-specific log view
-    st.subheader("👶 Child-Specific Log View")
-    selected_child = st.selectbox("Select Child:", [""] + sorted(list(all_children)))
-    
-    if selected_child:
-        child_logs = logs_df[logs_df["child"] == selected_child]
-        if not child_logs.empty:
-            st.markdown(f"### 📊 Statistics for {selected_child}")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Logs", len(child_logs))
-            with col2:
-                st.metric("Unique Actions", len(child_logs["action"].unique()))
-            with col3:
-                st.metric("Staff Interactions", len(child_logs["staff"].unique()))
-            
-            st.markdown("### 📝 Log History")
-            for _, log in child_logs.iterrows():
-                with st.expander(f"{log['timestamp']} - {log['action']}"):
-                    st.write(f"**Staff:** {log['staff']}")
-                    st.write(f"**Action:** {log['action']}")
-                    st.write(f"**Notes:** {log['notes']}")
-        else:
-            st.info(f"No logs found for {selected_child} on {selected_date_str}")
-
-    st.divider()
 
     # All Logs View
     st.subheader("📄 All Logs")
@@ -658,18 +636,22 @@ if page == "Admin View":
             with col1:
                 if st.button("Confirm Remove All"):
                     # Remove all assignments
-                    for key in assignments_data.keys():
-                        assignments_ref.child(key).delete()
-                    # Log the action
-                    logs_ref.push({
-                        "timestamp": now_timestamp(),
-                        "action": "EMERGENCY",
-                        "staff": "ADMIN",
-                        "child": "ALL",
-                        "notes": "Emergency removal of all children"
-                    })
+                    assignments_data = safe_get(assignments_ref)
+                    if assignments_data:  # Check if there are any assignments
+                        for key in assignments_data.keys():
+                            assignments_ref.child(key).delete()
+                        # Log the action
+                        logs_ref.push({
+                            "timestamp": now_timestamp(),
+                            "action": "EMERGENCY",
+                            "staff": "ADMIN",
+                            "child": "ALL",
+                            "notes": "Emergency removal of all children"
+                        })
+                        st.success("✅ All children have been removed from the system")
+                    else:
+                        st.info("No children in the system to remove")
                     st.session_state.confirm_remove_all = 0
-                    st.success("✅ All children have been removed from the system")
                     st.rerun()
             with col2:
                 if st.button("Cancel Emergency Action"):
